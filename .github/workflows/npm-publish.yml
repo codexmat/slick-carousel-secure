@@ -30,17 +30,27 @@ jobs:
           VERSION_CHANGED=false
 
           if [ "${{ github.event_name }}" = "push" ]; then
-            CHANGED="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}")"
-            echo "$CHANGED"
-            echo "$CHANGED" | grep -Eq '^slick/' && ASSETS_CHANGED=true
-            echo "$CHANGED" | grep -q '^package.json$' && VERSION_CHANGED=true
+            BEFORE="${{ github.event.before }}"
+            # If BEFORE isn't in the shallow clone, fall back to files changed in this commit
+            if git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+              CHANGED="$(git diff --name-only "${BEFORE}" "${{ github.sha }}")"
+            else
+              # Fallback: names in the pushed commit itself
+              CHANGED="$(git show --name-only --pretty='' "${{ github.sha }}")"
+            fi
           else
-            # workflow_dispatch: allow publish without diffs
-            VERSION_CHANGED=true
+            # workflow_dispatch: allow publish
+            CHANGED="package.json"
           fi
 
-          echo "assets_changed=$ASSETS_CHANGED"  >> "$GITHUB_OUTPUT"
-          echo "version_changed=$VERSION_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Changed files:"
+          echo "${CHANGED}"
+
+          echo "${CHANGED}" | grep -Eq '^slick/' && ASSETS_CHANGED=true || true
+          echo "${CHANGED}" | grep -q '^package.json$' && VERSION_CHANGED=true || true
+
+          echo "assets_changed=${ASSETS_CHANGED}"  >> "$GITHUB_OUTPUT"
+          echo "version_changed=${VERSION_CHANGED}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
