@@ -1563,7 +1563,8 @@
                     imageSource = $(this).attr('data-lazy'),
                     imageSrcSet = $(this).attr('data-srcset'),
                     imageSizes  = $(this).attr('data-sizes') || _.$slider.attr('data-sizes'),
-                    imageToLoad = document.createElement('img');
+                    imageToLoad = document.createElement('img'),
+                    validatedUrl = '';
 
                 imageToLoad.onload = function() {
 
@@ -1581,13 +1582,13 @@
                             }
 
                             image
-                                .attr('src', imageSource)
+                                .attr('src', validatedUrl)
                                 .animate({ opacity: 1 }, 200, function() {
                                     image
                                         .removeAttr('data-lazy data-srcset data-sizes')
                                         .removeClass('slick-loading');
                                 });
-                            _.$slider.trigger('lazyLoaded', [_, image, imageSource]);
+                            _.$slider.trigger('lazyLoaded', [_, image, validatedUrl]);
                         });
 
                 };
@@ -1605,10 +1606,15 @@
 
                 try {
                     var u = new URL(imageSource, window.location.origin);
-                        if (u.protocol === 'http:' || u.protocol === 'https:') {
-                            imageToLoad.src = u.href;
-                        }
-                    } catch (e) {
+                    if (u.protocol === 'http:' || u.protocol === 'https:') {
+                        imageToLoad.src = u.href;
+                        validatedUrl = u.href;
+                    } else {
+                        imageToLoad.src = '';
+                        validatedUrl = '';
+                    }
+                } catch (e) {
+                    validatedUrl = '';
                     imageToLoad.src = '';
                 };
 
