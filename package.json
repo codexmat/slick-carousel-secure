@@ -60,5 +60,6 @@
   },
   "devDependencies": {
     "terser": "^5.44.0"
-  }
+  },
+  "files": ["slick/*", "README.md", "LICENSE"]
 }

@@ -7,8 +7,8 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'slick/**'                  # any JS/CSS under slick/
-  workflow_dispatch:                # allow manual run
+      - 'slick/**'
+  workflow_dispatch:
 
 jobs:
   build-and-publish:
@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Extra guard so manual runs don't publish unless slick/* changed in the last commit range
+      # Guard: for push, confirm slick/* changed
       - name: Detect Slick changes
         id: changes
         run: |
@@ -32,10 +32,8 @@ jobs:
               echo "changed=false" >> "$GITHUB_OUTPUT"
             fi
           else
-            # For manual dispatch, allow publishing
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "changed = $(cat $GITHUB_OUTPUT | sed -n 's/changed=//p')"
 
       - uses: actions/setup-node@v4
         with:
@@ -47,8 +45,7 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: npm install --no-audit --fund=false
 
-      # ===== Build (JS + CSS), only if source files exist =====
-
+      # ===== Build (JS + CSS) =====
       - name: Minify slick.js → slick.min.js
         if: steps.changes.outputs.changed == 'true'
         run: |
@@ -79,28 +76,54 @@ jobs:
             echo "ℹ️ slick/slick-theme.css not found; skipping."
           fi
 
-      # Commit rebuilt assets (so repo stays in sync)
-      - name: Commit rebuilt assets
+      # Detect if minified artifacts actually changed
+      - name: Did artifacts change?
         if: steps.changes.outputs.changed == 'true'
+        id: diff
+        run: |
+          git add slick/slick.min.js slick/slick.min.css slick/slick-theme.min.css 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ No effective changes in built assets."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Commit rebuilt assets (only if changed)
+      - name: Commit rebuilt assets
+        if: steps.diff.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add slick/slick.min.js slick/slick.min.css slick/slick-theme.min.css 2>/dev/null || true
-          git commit -m "Auto-build slick assets (JS/CSS) [skip ci]" || echo "No changes to commit"
+          git commit -m "Auto-build slick assets (JS/CSS) [skip ci]"
           git push || true
 
-      # Bump prerelease version (…-sec.N)
+      # Bump prerelease version (…-sec.N) only if artifacts changed
       - name: Bump version automatically
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true'
         run: |
           npm version prerelease --preid=sec --no-git-tag-version
           git add package.json
           git commit -m "Auto bump version for slick change [skip ci]" || echo "Version already bumped"
           git push || true
 
-      # Publish to npm
+      # Skip if this version is already on npm (guard against double publish)
+      - name: Ensure version not already published
+        if: steps.diff.outputs.changed == 'true'
+        id: version_check
+        run: |
+          PKG=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ $PKG@$VER already exists on npm. Skipping publish."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to npm
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && steps.version_check.outputs.already != 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
+
