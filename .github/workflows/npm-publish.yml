@@ -5,12 +5,10 @@ name: Publish slick-carousel-secure
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
     paths:
-      - 'slick/slick.js'   # Only trigger if slick.js changes
-      - '.github/workflows/npm-publish.yml'  # allow manual workflow updates
-  workflow_dispatch:        # allow manual trigger too
+      - 'slick/**'                  # any JS/CSS under slick/
+  workflow_dispatch:                # allow manual run
 
 jobs:
   build-and-publish:
@@ -19,44 +17,90 @@ jobs:
       contents: write
       id-token: write
       packages: write
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      # Extra guard so manual runs don't publish unless slick/* changed in the last commit range
+      - name: Detect Slick changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            if git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -Eq '^slick/'; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # For manual dispatch, allow publishing
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "changed = $(cat $GITHUB_OUTPUT | sed -n 's/changed=//p')"
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        if: steps.changes.outputs.changed == 'true'
+        run: npm install --no-audit --fund=false
 
-      # 👇 Step 1: Build slick.min.js automatically
-      - name: Minify slick.js
+      # ===== Build (JS + CSS), only if source files exist =====
+
+      - name: Minify slick.js → slick.min.js
+        if: steps.changes.outputs.changed == 'true'
         run: |
-          npx terser slick/slick.js -o slick/slick.min.js --compress --mangle
-          echo "✅ slick.min.js rebuilt."
+          if [ -f slick/slick.js ]; then
+            npx terser slick/slick.js -o slick/slick.min.js --compress --mangle
+            echo "✅ slick.min.js rebuilt."
+          else
+            echo "ℹ️ slick/slick.js not found; skipping JS minify."
+          fi
 
-      # 👇 Step 2: Commit updated slick.min.js (optional but recommended)
-      - name: Commit updated slick.min.js
+      - name: Minify slick.css → slick.min.css
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          if [ -f slick/slick.css ]; then
+            npx clean-css-cli -o slick/slick.min.css slick/slick.css
+            echo "✅ slick.min.css rebuilt."
+          else
+            echo "ℹ️ slick/slick.css not found; skipping."
+          fi
+
+      - name: Minify slick-theme.css → slick-theme.min.css
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          if [ -f slick/slick-theme.css ]; then
+            npx clean-css-cli -o slick/slick-theme.min.css slick/slick-theme.css
+            echo "✅ slick-theme.min.css rebuilt."
+          else
+            echo "ℹ️ slick/slick-theme.css not found; skipping."
+          fi
+
+      # Commit rebuilt assets (so repo stays in sync)
+      - name: Commit rebuilt assets
+        if: steps.changes.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add slick/slick.min.js
-          git commit -m "Auto-build slick.min.js on slick.js change" || echo "No changes to commit"
-          git push
+          git add slick/slick.min.js slick/slick.min.css slick/slick-theme.min.css 2>/dev/null || true
+          git commit -m "Auto-build slick assets (JS/CSS) [skip ci]" || echo "No changes to commit"
+          git push || true
 
-      # 👇 Step 3: Bump version automatically
+      # Bump prerelease version (…-sec.N)
       - name: Bump version automatically
+        if: steps.changes.outputs.changed == 'true'
         run: |
           npm version prerelease --preid=sec --no-git-tag-version
           git add package.json
-          git commit -m "Auto bump version for slick.js update" || echo "Version already bumped"
-          git push
+          git commit -m "Auto bump version for slick change [skip ci]" || echo "Version already bumped"
+          git push || true
 
-      # 👇 Step 4: Publish updated package
+      # Publish to npm
       - name: Publish to npm
+        if: steps.changes.outputs.changed == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
