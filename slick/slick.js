@@ -1810,10 +1810,30 @@
                     }
                 }
 
-                image
-                    .attr( 'src', imageSource )
-                    .removeAttr('data-lazy data-srcset data-sizes')
-                    .removeClass('slick-loading');
+                // Ensure imageSource is a safe URL before setting src attribute
+                try {
+                    var validatedUrl = new URL(imageSource, window.location.origin);
+                    if (validatedUrl.protocol === 'http:' || validatedUrl.protocol === 'https:') {
+                        image
+                            .attr('src', validatedUrl.href)
+                            .removeAttr('data-lazy data-srcset data-sizes')
+                            .removeClass('slick-loading');
+                    } else {
+                        // Invalid protocol: handle as error
+                        image
+                            .removeAttr('data-lazy')
+                            .removeClass('slick-loading')
+                            .addClass('slick-lazyload-error');
+                        _.$slider.trigger('lazyLoadError', [ _, image, imageSource ]);
+                    }
+                } catch (e) {
+                    // Malformed URL: handle as error
+                    image
+                        .removeAttr('data-lazy')
+                        .removeClass('slick-loading')
+                        .addClass('slick-lazyload-error');
+                    _.$slider.trigger('lazyLoadError', [ _, image, imageSource ]);
+                }
 
                 if ( _.options.adaptiveHeight === true ) {
                     _.setPosition();
