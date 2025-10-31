@@ -1,6 +1,6 @@
 {
   "name": "slick-carousel-secure",
-  "version": "1.8.1-sec.2",
+  "version": "1.8.1-sec.3",
   "description": "the last carousel you'll ever need",
   "main": "slick/slick.js",
   "repository": {
@@ -47,10 +47,11 @@
     }
   ],
   "maintainers": [
-  {
-    "name": "Stanley Chen",
-    "email": "stanleycn3@gmail.com"
-  }],
+    {
+      "name": "Stanley Chen",
+      "email": "stanleycn3@gmail.com"
+    }
+  ],
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/codexmat/slick-carousel-secure/issues"
@@ -61,5 +62,9 @@
   "devDependencies": {
     "terser": "^5.44.0"
   },
-  "files": ["slick/*", "README.md", "LICENSE"]
+  "files": [
+    "slick/*",
+    "README.md",
+    "LICENSE"
+  ]
 }
