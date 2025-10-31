@@ -1,33 +1,62 @@
 # This workflow will run tests using node and then publish a package to GitHub Packages when a release is created
 # For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
 
-name: Node.js Package
+name: Publish slick-carousel-secure
 
 on:
-  release:
-    types: [created]
+  push:
+    branches:
+      - main
+    paths:
+      - 'slick/slick.js'   # Only trigger if slick.js changes
+      - '.github/workflows/npm-publish.yml'  # allow manual workflow updates
+  workflow_dispatch:        # allow manual trigger too
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-      - run: npm test
 
-  publish-npm:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://registry.npmjs.org/
-      - run: npm ci
-      - run: npm publish
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 👇 Step 1: Build slick.min.js automatically
+      - name: Minify slick.js
+        run: |
+          npx terser slick/slick.js -o slick/slick.min.js --compress --mangle
+          echo "✅ slick.min.js rebuilt."
+
+      # 👇 Step 2: Commit updated slick.min.js (optional but recommended)
+      - name: Commit updated slick.min.js
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add slick/slick.min.js
+          git commit -m "Auto-build slick.min.js on slick.js change" || echo "No changes to commit"
+          git push
+
+      # 👇 Step 3: Bump version automatically
+      - name: Bump version automatically
+        run: |
+          npm version prerelease --preid=sec --no-git-tag-version
+          git add package.json
+          git commit -m "Auto bump version for slick.js update" || echo "Version already bumped"
+          git push
+
+      # 👇 Step 4: Publish updated package
+      - name: Publish to npm
         env:
-          NODE_AUTH_TOKEN: ${{secrets.npm_token}}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
